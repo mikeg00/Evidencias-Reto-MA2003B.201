@@ -172,5 +172,8 @@ NO3
 SE3
 SE2
 
-Decidimos borrarlas por practicidad del análisis. Se abordaran 
+Decidimos borrarlas por practicidad del análisis. Se abordaran estaciones estratégicas que se encuentren dentro de zonas residenciales. El análisis buscará resultados enfocándose en estas áreas.
+
+
+
 
