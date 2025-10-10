@@ -1,0 +1,340 @@
+---
+title: "Etapa2_Equipo5"
+author: "Miguel Angel González Gutiérrez"
+date: "2025-10-10"
+output: pdf_document
+---
+
+## Retomar Etapa I
+
+### Data Load
+```{r}
+Estaciones<- c(
+  "SURESTE",
+  "NORESTE",
+  "CENTRO",
+  "NOROESTE",
+  "SUROESTE",
+  "NOROESTE 2",
+  "NORTE",
+  "NORESTE2",
+  "SURESTE2",
+  "SUROESTE2",
+  "SUR",
+  "NORTE 2",
+  "SURESTE 3",
+  "NOROESTE 3",
+  "NORESTE 3"
+)
+```
+
+
+```{r}
+library(readxl)
+for (est in Estaciones) {
+  assign(est, read_excel(
+    "DATOS_COMBINADOS_2023_2024_COMPLETO.xlsx",
+    sheet = est,
+    na = "NULL",
+    guess_max = 100000
+  ))
+}
+```
+
+```{r}
+VARIABLES <- c(
+  "fecha",
+  "O3 (ppb)",
+  "NO2 (ppb)",
+  "PM2.5 (ug/m3)",
+  "PM10 (ug/m3)",
+  "TOUT (ºC)",
+  "RH (%)",
+  "RAINF (mm/h)",
+  "SR (kW/m2)",
+  "WSR (km/h)",
+  "WDR (azimutal)"
+)
+```
+
+
+```{r}
+for (est in Estaciones) {
+    df <- get(est)  # obtener el data frame por nombre
+    df <- df[, intersect(names(df), VARIABLES)]  # conservar solo las columnas coincidentes
+    assign(est, df)
+}
+```
+
+
+```{r}
+cat("Porcentajes de datos faltantes a imputar:\n")
+
+for (est in Estaciones) {
+    df <- get(est)
+    pct_na <- sum(is.na(df)) / (nrow(df) * ncol(df)) * 100
+    cat(est, ": ", round(pct_na, 2), "%\n", sep = "")
+  }
+```
+
+FUNCION DE IMPUTACION
+
+```{r}
+imputar_series_tiempo <- function(datos, metodo = "kalman") {
+  
+  #Filtrar para aplicar imputacion exceptuando la columna de fecha
+  datos_sin_fechas <- datos[, -1]
+  
+  # Convertir datos_sin_fechas a formato ts si no lo está
+  if (!is.ts(datos_sin_fechas)) {
+    datos_sin_fechas <- as.ts(datos_sin_fechas)
+  }
+  
+  # Verificar el método de imputación solicitado
+  metodo <- match.arg(metodo, c("kalman", "arima", "interpolacion", "mice"))
+  
+  datos_imputados <- switch(metodo,
+    "kalman" = {
+      # Imputación usando filtro Kalman
+      datos_imp <- na_kalman(datos, model = "auto.arima")
+    },
+    "arima" = {
+      # Imputación usando ARIMA
+      datos_imp <- na_seadec(datos, algorithm = "arima")
+    },
+    "interpolacion" = {
+      # Imputación usando interpolación
+      datos_imp <- na_interpolation(datos, option = "spline")
+    },
+    "mice" = {
+      # Imputación usando MICE para datos multivariados
+      datos_imp <- mice.d.ts(datos_sin_fechas, m = 5, maxit = 50)
+      datos_imp <- complete(datos_imp)
+    }
+  )
+  
+  datos_final <- as.data.frame(datos_imp)
+  
+  
+  return(datos_final)
+}
+
+# Función para evaluar la calidad de la imputación
+evaluar_imputacion <- function(datos_originales, datos_imputados) {
+  # Convertir ambos conjuntos de datos a matrices
+  if (is.data.frame(datos_originales)) datos_originales <- as.matrix(datos_originales)
+  if (is.data.frame(datos_imputados)) datos_imputados <- as.matrix(datos_imputados)
+  
+  # Calcular métricas de error solo para valores no NA en los datos originales
+  mascara_na <- is.na(datos_originales)
+  
+  # Calcular RMSE y MAE solo para valores imputados
+  errores <- list()
+  for (col in 1:ncol(datos_originales)) {
+    valores_orig <- datos_originales[!mascara_na[,col], col]
+    valores_imp <- datos_imputados[!mascara_na[,col], col]
+    
+    rmse <- sqrt(mean((valores_orig - valores_imp)^2))
+    mae <- mean(abs(valores_orig - valores_imp))
+    
+    errores[[colnames(datos_originales)[col]]] <- list(
+      RMSE = rmse,
+      MAE = mae
+    )
+  }
+  
+  return(errores)
+}
+```
+
+
+```{r}
+for (est in Estaciones) {
+    df <- get(est)  # obtener el data.frame
+    df_imputado <- imputar_series_tiempo(df, metodo = "kalman")  # imputar
+    assign(est, df_imputado)  # Reemplazar el data.frame original con el imputado
+    cat("✅ Imputación completada para:", est, "\n")
+  }
+```
+
+
+```{r}
+cat("Porcentajes de datos faltantes a imputar:\n")
+
+for (est in Estaciones) {
+    df <- get(est)
+    pct_na <- sum(is.na(df)) / (nrow(df) * ncol(df)) * 100
+    cat(est, ": ", round(pct_na, 2), "%\n", sep = "")
+  }
+```
+NO2
+NO3
+SE3
+SE2
+```{r}
+Estaciones<- c(
+  "SURESTE",
+  "NORESTE",
+  "CENTRO",
+  "NOROESTE",
+  "SUROESTE",
+  "NORTE",
+  "NORESTE2",
+  "SUROESTE2",
+  "SUR",
+  "NORTE 2",
+  "NORESTE 3"
+)
+```
+
+Decidimos borrarlas por practicidad del análisis. Se abordaran estaciones estratégicas que se encuentren dentro de zonas residenciales. El análisis buscará resultados enfocándose en estas áreas.
+
+```{r}
+library(openxlsx)
+
+# Crear un nuevo workbook
+wb <- createWorkbook()
+
+# Recorrer cada estación y agregar como hoja
+for (est in Estaciones) {
+    df <- get(est)    # obtener el data.frame
+    addWorksheet(wb, sheetName = est)  # crear hoja con el nombre de la estación
+    writeData(wb, sheet = est, df)    # escribir los datos en la hoja
+  }
+
+# Guardar el archivo Excel
+saveWorkbook(wb, file = "DATOS_ESTACIONES_COMPLETOS.xlsx", overwrite = TRUE)
+
+cat("✅ Archivo Excel generado: DATOS_ESTACIONES_COMPLETOS.xlsx\n")
+```
+
+
+Una vez ya imputados los datos, se procederá a realizar el análisis descriptivo de las variables.
+
+```{r}
+# Eliminamos variable fecha, al no ser cuantitativa
+VARIABLES <- setdiff(VARIABLES, "fecha")
+
+# Inicializar lista para combinar
+lista_dfs <- list()
+
+for (est in Estaciones) {
+  if (exists(est)) {
+    df <- get(est)
+    lista_dfs[[est]] <- df[, intersect(names(df), VARIABLES)]  # solo variables cuantitativas
+  }
+}
+
+# Unir todos los data.frames en uno solo
+df_total <- do.call(rbind, lista_dfs)
+
+
+# Funcion para calcular moda
+moda <- function(x) {
+  ux <- unique(x[!is.na(x)])
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+resumen <- data.frame(
+  Variable = character(),
+  Media = numeric(),
+  Mediana = numeric(),
+  Moda = numeric(),
+  Minimo = numeric(),
+  Maximo = numeric(),
+  Rango = numeric(),
+  Varianza = numeric(),
+  Desviacion = numeric(),
+  stringsAsFactors = FALSE
+)
+```
+
+```{r}
+for (var in VARIABLES) {
+  if (var %in% names(df_total)) {
+    x <- df_total[[var]]
+    resumen <- rbind(resumen, data.frame(
+      Variable = var,
+      Media = mean(x, na.rm = TRUE),
+      Mediana = median(x, na.rm = TRUE),
+      Moda = moda(x),
+      Minimo = min(x, na.rm = TRUE),
+      Maximo = max(x, na.rm = TRUE),
+      Rango = max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+      Varianza = var(x, na.rm = TRUE),
+      Desviacion = sd(x, na.rm = TRUE)
+    ))
+  }
+}
+
+print(resumen)
+```
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+# SR aparte
+ggplot(df_long %>% filter(Variable == "SR (kW/m2)"),
+       aes(x = Variable, y = Valor)) +
+  geom_boxplot(outlier.colour = "red") +
+  labs(title = "Boxplot solo para SR", y = "Valor", x = "SR")
+
+# Todas las demás
+ggplot(df_long %>% filter(Variable != "SR (kW/m2)"),
+       aes(x = Variable, y = Valor)) +
+  geom_boxplot(outlier.colour = "red") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Boxplots sin SR", y = "Valor", x = "Variable")
+
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Crear versión larga del dataframe
+df_long <- df_total %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Valor")
+
+# Graficar histogramas
+ggplot(df_long, aes(x = Valor)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.8) +
+  facet_wrap(~Variable, scales = "free", ncol = 3) +
+  theme_minimal() +
+  labs(
+    title = "Distribución de las variables (Histogramas)",
+    x = "Valor",
+    y = "Frecuencia"
+  )
+
+
+```
+
+```{r}
+# Calcular matriz de correlación (ignorando valores NA)
+corr_matrix <- cor(df_total, use = "pairwise.complete.obs", method = "pearson")
+
+# Ver una parte de la matriz
+round(corr_matrix, 2)
+
+
+library(ggcorrplot)
+
+# Graficar el mapa de calor
+ggcorrplot(
+  corr_matrix,
+  method = "square",        # celdas cuadradas
+  type = "lower",           # muestra solo la mitad inferior
+  lab = TRUE,               # muestra valores numéricos
+  lab_size = 3,
+  colors = c("blue", "white", "red"),
+  title = "Mapa de calor de correlaciones entre variables",
+  tl.cex = 10
+)
+
+```
+
+
+
+
